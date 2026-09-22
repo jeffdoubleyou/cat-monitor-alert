@@ -89,6 +89,9 @@ class FakeClientWithoutClips(FakeClient):
 def test_play_sound_falls_back_to_cgi() -> None:
     posted: dict = {}
 
+    def fake_get(url, **kwargs):
+        return SimpleNamespace(status_code=200, text="type=IP2M")
+
     def fake_post(url, **kwargs):
         posted["url"] = url
         posted.update(kwargs)
@@ -100,10 +103,71 @@ def test_play_sound_falls_back_to_cgi() -> None:
         "admin",
         "secret",
         client_factory=FakeClientWithoutClips,
+        http_get=fake_get,
         http_post=fake_post,
     )
     camera.play_sound()
     assert "audio.cgi?action=postAudio" in posted["url"]
     assert posted["files"]["file"][0] == "alert.al"
     assert posted["headers"]["Content-Type"] == "Audio/G.711A"
+
+
+def test_play_sound_skips_cgi_when_probe_fails() -> None:
+    def fake_get(url, **kwargs):
+        return SimpleNamespace(status_code=404, text="nope")
+
+    def fake_post(url, **kwargs):
+        raise AssertionError("CGI POST should not run after a failed probe")
+
+    camera = OnvifCamera(
+        "192.168.0.181",
+        2020,
+        "admin1",
+        "secret",
+        cgi_port=80,
+        client_factory=FakeClientWithoutClips,
+        http_get=fake_get,
+        http_post=fake_post,
+    )
+    try:
+        camera.play_sound()
+    except Exception as exc:
+        message = str(exc)
+        assert "CGI not available" in message
+        assert "TAPO_CLOUD_PASSWORD" in message
+    else:
+        raise AssertionError("expected CameraError")
+
+
+def test_play_sound_uses_tapo_alarm() -> None:
+    class FakeTapo:
+        def __init__(self, *args, **kwargs) -> None:
+            self.started = False
+            self.stopped = False
+
+        def startManualAlarm(self):
+            self.started = True
+
+        def stopManualAlarm(self):
+            self.stopped = True
+
+        def setSpeakerVolume(self, volume):
+            self.volume = volume
+
+    client = FakeTapo()
+    camera = OnvifCamera(
+        "192.168.0.181",
+        2020,
+        "admin1",
+        "onvif-secret",
+        tapo_username="admin",
+        tapo_password="cloud-secret",
+        tapo_alarm_seconds=0.01,
+        client_factory=FakeClientWithoutClips,
+        tapo_client_factory=lambda *args, **kwargs: client,
+    )
+    camera.play_sound()
+    assert client.started is True
+    assert client.stopped is True
+    assert client.volume == 100
 

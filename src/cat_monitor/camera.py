@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from cat_monitor.audio import alert_alaw_bytes, write_alert_wav
+from cat_monitor.tapo import TapoSiren
 from cat_monitor.urls import inject_credentials, redact_url
 
 logger = logging.getLogger(__name__)
@@ -73,9 +74,16 @@ class OnvifCamera:
         audio_clip_token: str = "",
         audio_repeat_cycles: int = 1,
         audio_backchannel_url: str = "",
+        cgi_port: int = 80,
+        tapo_username: str = "admin",
+        tapo_password: str = "",
+        tapo_alarm_seconds: float = 3.0,
+        tapo_alarm_sound: str = "",
         client_factory: Callable[..., Any] | None = None,
+        tapo_client_factory: Callable[..., Any] | None = None,
         run_command: Callable[..., subprocess.CompletedProcess[bytes]] = subprocess.run,
         http_post: Callable[..., Any] | None = None,
+        http_get: Callable[..., Any] | None = None,
     ) -> None:
         self.host = host
         self.port = port
@@ -87,9 +95,16 @@ class OnvifCamera:
         self.audio_clip_token = audio_clip_token
         self.audio_repeat_cycles = audio_repeat_cycles
         self.audio_backchannel_url = audio_backchannel_url
+        self.cgi_port = cgi_port
+        self.tapo_username = tapo_username
+        self.tapo_password = tapo_password
+        self.tapo_alarm_seconds = tapo_alarm_seconds
+        self.tapo_alarm_sound = tapo_alarm_sound
         self._client_factory = client_factory
+        self._tapo_client_factory = tapo_client_factory
         self._run_command = run_command
         self._http_post = http_post
+        self._http_get = http_get
         self._client: Any | None = None
 
     def _get_client(self) -> Any:
@@ -123,6 +138,15 @@ class OnvifCamera:
     def play_sound(self) -> None:
         """Play a warning sound on the camera speaker."""
         errors: list[str] = []
+        if self.tapo_password:
+            try:
+                self._play_tapo_alarm()
+                logger.info("Played Tapo camera alarm")
+                return
+            except Exception as exc:  # noqa: BLE001
+                errors.append(f"Tapo alarm: {exc}")
+                logger.warning("Tapo alarm failed: %s", exc)
+
         try:
             self._play_audio_clip()
             logger.info("Played ONVIF audio clip on camera")
@@ -149,7 +173,13 @@ class OnvifCamera:
                 errors.append(f"RTSP backchannel: {exc}")
                 logger.warning("RTSP backchannel playback failed: %s", exc)
 
-        raise CameraError("Could not play a sound on the camera: " + "; ".join(errors))
+        hint = ""
+        if not self.tapo_password:
+            hint = (
+                " Tapo cameras (C100 and similar) have no ONVIF/RTSP speaker; "
+                "set TAPO_CLOUD_PASSWORD to your Tapo app password."
+            )
+        raise CameraError("Could not play a sound on the camera: " + "; ".join(errors) + hint)
 
     def _stream_uri_from_media(self, client: Any) -> str | None:
         try:
@@ -194,14 +224,37 @@ class OnvifCamera:
             RepeatCycles=self.audio_repeat_cycles,
         )
 
+    def _play_tapo_alarm(self) -> None:
+        siren = TapoSiren(
+            self.host,
+            self.tapo_username,
+            self.tapo_password,
+            duration_seconds=self.tapo_alarm_seconds,
+            sound=self.tapo_alarm_sound,
+            client_factory=self._tapo_client_factory,
+        )
+        siren.play()
+
     def _play_cgi_audio(self) -> None:
         """Amcrest/Dahua HTTP CGI talk-back (G.711 A-law)."""
         import requests
         from requests.auth import HTTPDigestAuth
 
         scheme = "https" if self.use_https else "http"
+        auth = HTTPDigestAuth(self.username, self.password)
+        probe_url = (
+            f"{scheme}://{self.host}:{self.cgi_port}/cgi-bin/magicBox.cgi?action=getDeviceType"
+        )
+        getter = self._http_get or requests.get
+        try:
+            probe = getter(probe_url, auth=auth, timeout=min(5, self.timeout))
+        except Exception as exc:  # noqa: BLE001
+            raise CameraError(f"CGI probe failed: {exc}") from exc
+        if getattr(probe, "status_code", 0) >= 400:
+            raise CameraError(f"CGI not available (HTTP {probe.status_code})")
+
         url = (
-            f"{scheme}://{self.host}:{self.port}"
+            f"{scheme}://{self.host}:{self.cgi_port}"
             "/cgi-bin/audio.cgi?action=postAudio&httptype=singlepart&channel=1"
         )
         alaw = alert_alaw_bytes()
@@ -210,12 +263,12 @@ class OnvifCamera:
             response = poster(
                 url,
                 files={"file": ("alert.al", alaw, "Audio/G.711A")},
-                auth=HTTPDigestAuth(self.username, self.password),
+                auth=auth,
                 headers={"Content-Type": "Audio/G.711A", "Content-Length": "9999999"},
                 timeout=self.timeout,
             )
         except requests.exceptions.ReadTimeout:
-            # These cameras often keep the POST open after playing the tone.
+            # Dahua/Amcrest often keep the POST open after playing the tone.
             return
         if getattr(response, "status_code", 200) >= 400:
             body = getattr(response, "text", "")[:200]

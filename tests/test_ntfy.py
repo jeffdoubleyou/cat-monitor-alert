@@ -43,3 +43,12 @@ def test_send_alert_puts_jpeg() -> None:
     assert call["headers"]["Authorization"] == "Bearer tok"
     assert "77%" in call["headers"]["Message"]
     assert call["headers"]["Filename"].endswith(".jpg")
+
+
+def test_send_test_puts_text() -> None:
+    session = FakeSession()
+    client = NtfyClient("https://ntfy.sh", "cats", session=session)
+    client.send_test()
+    assert session.calls[0]["url"] == "https://ntfy.sh/cats"
+    assert session.calls[0]["data"] == "Cat monitor can reach ntfy."
+    assert "test" in session.calls[0]["headers"]["Title"]

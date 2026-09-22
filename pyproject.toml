@@ -14,6 +14,7 @@ dependencies = [
     "onvif-python>=0.2.9",
     "pydantic-settings>=2.4.0",
     "python-dotenv>=1.0.1",
+    "pytapo>=3.4.0",
     "requests>=2.32.0",
     "ultralytics>=8.3.0",
 ]

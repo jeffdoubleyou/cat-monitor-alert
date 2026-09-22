@@ -127,15 +127,15 @@ class CatMonitor:
             logger.info("Dry run: would play camera sound and send ntfy alert")
             return
         try:
-            self.camera.play_sound()
-        except CameraError:
-            logger.exception("Failed to play ONVIF sound")
-        except Exception:  # noqa: BLE001
-            logger.exception("Unexpected error playing camera sound")
-        try:
             self.ntfy.send_alert(result, jpeg)
         except Exception:  # noqa: BLE001
             logger.exception("Failed to send ntfy alert")
+        try:
+            self.camera.play_sound()
+        except CameraError:
+            logger.exception("Failed to play camera sound")
+        except Exception:  # noqa: BLE001
+            logger.exception("Unexpected error playing camera sound")
 
     def _maybe_save_snapshot(self, jpeg: bytes) -> None:
         if not self.settings.snapshot_dir:
@@ -159,6 +159,11 @@ def build_monitor(settings: Settings) -> CatMonitor:
         audio_clip_token=settings.onvif_audio_clip_token,
         audio_repeat_cycles=settings.onvif_audio_repeat_cycles,
         audio_backchannel_url=settings.audio_backchannel_url,
+        cgi_port=settings.camera_http_port,
+        tapo_username=settings.tapo_username,
+        tapo_password=settings.tapo_cloud_password,
+        tapo_alarm_seconds=settings.tapo_alarm_seconds,
+        tapo_alarm_sound=settings.tapo_alarm_sound,
     )
     grabber = FrameGrabber(
         transport=settings.rtsp_transport,
@@ -187,6 +192,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--once", action="store_true", help="Grab and process a single frame, then exit")
     parser.add_argument("--image", type=Path, help="Run detection on a still image instead of the camera")
     parser.add_argument("--dry-run", action="store_true", help="Detect only; do not play sound or notify")
+    parser.add_argument("--play-sound", action="store_true", help="Play the camera alert sound once and exit")
+    parser.add_argument("--notify-test", action="store_true", help="Send a test ntfy alert and exit")
     return parser.parse_args(argv)
 
 
@@ -206,16 +213,33 @@ def main(argv: list[str] | None = None) -> int:
     configure_logging(settings.log_level)
 
     try:
-        if args.image is None:
+        if args.notify_test:
+            settings.require_ntfy()
+        elif args.image is None:
             settings.require_camera()
-        if not settings.dry_run:
+            if not settings.dry_run and not args.play_sound:
+                settings.require_ntfy()
+        elif not settings.dry_run:
             settings.require_ntfy()
     except ValueError as exc:
         logger.error("%s", exc)
         return 2
 
+    if args.notify_test:
+        NtfyClient(
+            server=settings.ntfy_server,
+            topic=settings.ntfy_topic,
+            token=settings.ntfy_token,
+            title=settings.ntfy_title,
+            priority=settings.ntfy_priority,
+        ).send_test()
+        return 0
+
     monitor = build_monitor(settings)
     try:
+        if args.play_sound:
+            monitor.camera.play_sound()
+            return 0
         if args.image:
             if not args.image.exists():
                 logger.error("Image not found: %s", args.image)
@@ -227,6 +251,9 @@ def main(argv: list[str] | None = None) -> int:
         logger.info("Stopped")
         return 0
     except CaptureError as exc:
+        logger.error("%s", exc)
+        return 1
+    except CameraError as exc:
         logger.error("%s", exc)
         return 1
     return 0

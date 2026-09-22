@@ -49,6 +49,10 @@ python -m cat_monitor --once
 
 # test detection on a photo (no RTSP)
 python -m cat_monitor --image path/to/cat.jpg --dry-run
+
+# speaker / ntfy smoke tests
+python -m cat_monitor --play-sound
+python -m cat_monitor --notify-test
 ```
 
 `--dry-run` still runs detection but skips the camera speaker and ntfy.
@@ -81,7 +85,10 @@ These cover config, ONVIF URL/audio handling, YOLO filtering, ntfy payloads, and
 | `NTFY_TOPIC` | — | Topic name (treat it like a password) |
 | `NTFY_TOKEN` | empty | Bearer token if the server requires auth |
 | `ONVIF_AUDIO_CLIP_TOKEN` | empty | Play this clip; otherwise the first clip the camera reports |
-| `AUDIO_BACKCHANNEL_URL` | empty | Optional RTSP talk-back URL if ONVIF clips and CGI both fail |
+| `TAPO_CLOUD_PASSWORD` | empty | Tapo app password for C100-style siren (not the ONVIF account) |
+| `TAPO_ALARM_SECONDS` | `3` | How long to sound the Tapo alarm |
+| `TAPO_ALARM_SOUND` | empty | Tapo sound: `siren`, `emergency`, `red_alert`, or a custom clip id |
+| `AUDIO_BACKCHANNEL_URL` | empty | Optional RTSP talk-back URL if ONVIF clips, Tapo alarm, and CGI all fail |
 | `SNAPSHOT_DIR` | empty | Write annotated JPEGs here |
 | `DRY_RUN` | `false` | Detect only |
 | `LOG_LEVEL` | `INFO` | Python log level |
@@ -90,9 +97,16 @@ These cover config, ONVIF URL/audio handling, YOLO filtering, ntfy payloads, and
 
 Most ONVIF Profile T cameras expose `PlayAudioClip`. Enable the speaker in the camera UI and, if the firmware has named clips (siren, doorbell, alert), set `ONVIF_AUDIO_CLIP_TOKEN` to that token.
 
-If that fails, the monitor posts a short G.711 A-law tone to Amcrest/Dahua `/cgi-bin/audio.cgi` talk-back. That is what the IP2M-841 and similar cameras actually use.
+**Tapo C100 and other Tapo cameras** only implement ONVIF Profile S, so they have no ONVIF/RTSP speaker. Set `TAPO_CLOUD_PASSWORD` to your Tapo app password (this is **not** the ONVIF camera account). In the Tapo app, also turn on **Me → Tapo Lab → Third-Party Compatibility**. The monitor then plays the camera alarm for `TAPO_ALARM_SECONDS` (default 3). Pick the clip with `TAPO_ALARM_SOUND=siren`, `emergency`, or `red_alert`. You can also record up to two custom clips in the Tapo app and set `TAPO_ALARM_SOUND` to that clip id. Test with:
 
-If the camera has two-way audio but neither clips nor CGI, set `AUDIO_BACKCHANNEL_URL` to the talk-back RTSP URL. The monitor will send the tone via `ffmpeg`.
+```bash
+python -m cat_monitor --play-sound
+python -m cat_monitor --notify-test
+```
+
+If that fails, the monitor posts a short G.711 A-law tone to Amcrest/Dahua `/cgi-bin/audio.cgi` talk-back.
+
+If the camera has two-way audio but neither clips, Tapo alarm, nor CGI, set `AUDIO_BACKCHANNEL_URL` to the talk-back RTSP URL. The monitor will send the tone via `ffmpeg`.
 
 ## Docker
 

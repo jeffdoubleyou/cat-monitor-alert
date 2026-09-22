@@ -126,7 +126,29 @@ def test_run_once_uses_explicit_rtsp_url() -> None:
 
 
 def test_parse_args() -> None:
-    args = parse_args(["--once", "--dry-run", "--image", "cat.jpg"])
+    args = parse_args(["--once", "--dry-run", "--image", "cat.jpg", "--play-sound", "--notify-test"])
     assert args.once is True
     assert args.dry_run is True
     assert args.image == Path("cat.jpg")
+    assert args.play_sound is True
+    assert args.notify_test is True
+
+
+def test_tick_sends_ntfy_before_sound() -> None:
+    order: list[str] = []
+    result = DetectionResult((Detection("cat", 0.9, (0, 0, 10, 10)),))
+    monitor, camera, ntfy, _grabber = _monitor(result)
+
+    def play_sound() -> None:
+        order.append("sound")
+        camera.sounds += 1
+
+    def send_alert(result_arg, jpeg):
+        order.append("ntfy")
+        ntfy.alerts.append((result_arg, jpeg))
+
+    camera.play_sound = play_sound  # type: ignore[method-assign]
+    ntfy.send_alert = send_alert  # type: ignore[method-assign]
+    with patch("cat_monitor.app.encode_jpeg", return_value=b"jpeg"):
+        assert monitor.tick() is True
+    assert order == ["ntfy", "sound"]

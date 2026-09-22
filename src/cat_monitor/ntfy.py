@@ -83,3 +83,19 @@ class NtfyClient:
         if response.status_code >= 400:
             raise NtfyError(f"ntfy returned HTTP {response.status_code}: {response.text[:300]}")
         logger.info("Sent ntfy alert to %s", self.url)
+
+    def send_test(self) -> None:
+        """Publish a text-only message so ntfy can be checked without a cat frame."""
+        response = self._session.put(
+            self.url,
+            data="Cat monitor can reach ntfy.",
+            headers={
+                "Title": f"{self.title} (test)",
+                "Priority": self.priority,
+                "Tags": "cat,white_check_mark",
+            },
+            timeout=self.timeout,
+        )
+        if response.status_code >= 400:
+            raise NtfyError(f"ntfy returned HTTP {response.status_code}: {response.text[:300]}")
+        logger.info("Sent ntfy test to %s", self.url)

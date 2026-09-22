@@ -44,6 +44,12 @@ class Settings(BaseSettings):
     onvif_audio_clip_token: str = ""
     onvif_audio_repeat_cycles: int = 1
     audio_backchannel_url: str = ""
+    camera_http_port: int = 80
+
+    tapo_username: str = "admin"
+    tapo_cloud_password: str = ""
+    tapo_alarm_seconds: float = 3.0
+    tapo_alarm_sound: str = ""
 
     snapshot_dir: str = ""
     log_level: str = "INFO"
@@ -64,7 +70,7 @@ class Settings(BaseSettings):
             raise ValueError("DETECT_CONFIDENCE must be between 0 and 1")
         return value
 
-    @field_validator("snapshot_interval_seconds", "alert_cooldown_seconds", "capture_timeout_seconds")
+    @field_validator("snapshot_interval_seconds", "alert_cooldown_seconds", "capture_timeout_seconds", "tapo_alarm_seconds")
     @classmethod
     def _positive(cls, value: float) -> float:
         if value <= 0:
