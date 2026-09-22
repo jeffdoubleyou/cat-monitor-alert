@@ -1,0 +1,13 @@
+services:
+  cat-monitor:
+    build: .
+    container_name: cat-monitor-alert
+    restart: unless-stopped
+    env_file:
+      - path: .env
+        required: false
+    volumes:
+      - ./snapshots:/app/snapshots
+    # Host networking makes LAN ONVIF/RTSP cameras easiest to reach on Linux.
+    # Comment this out and use a bridge network if you prefer.
+    network_mode: host

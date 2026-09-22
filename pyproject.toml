@@ -1,0 +1,43 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cat-monitor-alert"
+version = "0.1.0"
+description = "Grab RTSP frames from an ONVIF camera, detect cats, play a camera sound, and send ntfy alerts."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "numpy>=1.26.0",
+    "opencv-python-headless==4.10.0.84",
+    "onvif-python>=0.2.9",
+    "pydantic-settings>=2.4.0",
+    "python-dotenv>=1.0.1",
+    "requests>=2.32.0",
+    "ultralytics>=8.3.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-mock>=3.14.0",
+]
+
+[project.scripts]
+cat-monitor = "cat_monitor.app:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+addopts = "-q"
+markers = [
+    "integration: tests that need a live camera or model weights",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
