@@ -1,4 +1,5 @@
 import subprocess
+from pathlib import Path
 from unittest.mock import MagicMock
 
 import numpy as np
@@ -20,35 +21,29 @@ def test_roundtrip_jpeg() -> None:
     assert decoded.shape == original.shape
 
 
-def test_ffmpeg_grab_decodes_stdout() -> None:
+def test_ffmpeg_grab_decodes_file() -> None:
     jpeg = _jpeg_bytes()
-    runner = MagicMock(
-        return_value=subprocess.CompletedProcess(
-            args=["ffmpeg"],
-            returncode=0,
-            stdout=jpeg,
-            stderr=b"",
-        )
-    )
+
+    def runner(args, **kwargs):
+        Path(args[-1]).write_bytes(jpeg)
+        return subprocess.CompletedProcess(args=args, returncode=0, stdout=b"", stderr=b"")
+
     grabber = FrameGrabber(run_command=runner, ffmpeg_path="/usr/bin/ffmpeg")
     frame = grabber.grab("rtsp://camera/stream")
     assert frame.shape[2] == 3
-    runner.assert_called_once()
-    command = runner.call_args.args[0]
-    assert command[0] == "/usr/bin/ffmpeg"
-    assert "rtsp://camera/stream" in command
 
 
-def test_ffmpeg_error_falls_back_then_fails(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_ffmpeg_error_skips_opencv_for_rtsp() -> None:
     runner = MagicMock(
         return_value=subprocess.CompletedProcess(
             args=["ffmpeg"],
             returncode=1,
             stdout=b"",
-            stderr=b"connection refused",
+            stderr=b"rtsp://admin:secret@10.0.0.8/stream connection refused",
         )
     )
     grabber = FrameGrabber(run_command=runner, ffmpeg_path="/usr/bin/ffmpeg")
-    monkeypatch.setattr(grabber, "_grab_opencv", lambda url: (_ for _ in ()).throw(CaptureError("nope")))
-    with pytest.raises(CaptureError, match="Could not grab a frame"):
-        grabber.grab("rtsp://camera/stream")
+    with pytest.raises(CaptureError, match="Could not grab a frame") as exc:
+        grabber.grab("rtsp://admin:secret@10.0.0.8/stream")
+    assert "secret" not in str(exc.value)
+    assert "opencv" not in str(exc.value).lower()

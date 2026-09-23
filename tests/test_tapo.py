@@ -158,16 +158,20 @@ def test_resolve_alarm_type_by_name_and_index() -> None:
 class FakeTypedTapo(FakeClipTapo):
     def __init__(self, host, user, password) -> None:
         super().__init__(host, user, password)
-        self.alarm_type = None
-
-    def getAlertTypeList(self):
-        return {"msg_alarm": {"alert_type": {"alert_type_list": ["Siren", "Emergency", "Red Alert"]}}}
+        self.alarm_calls: list[dict] = []
 
     def setAlarm(self, enabled, soundEnabled=True, lightEnabled=True, alarmType=None, alarmVolume=None):
-        self.alarm_type = alarmType
+        self.alarm_calls.append(
+            {
+                "enabled": enabled,
+                "soundEnabled": soundEnabled,
+                "lightEnabled": lightEnabled,
+                "alarmType": alarmType,
+            }
+        )
 
 
-def test_tapo_siren_selects_named_sound() -> None:
+def test_tapo_siren_does_not_enable_motion_alarm() -> None:
     client = FakeTypedTapo("192.168.0.181", "admin", "cloud")
     siren = TapoSiren(
         "192.168.0.181",
@@ -179,5 +183,20 @@ def test_tapo_siren_selects_named_sound() -> None:
         sleeper=lambda _delay: None,
     )
     siren.play()
-    assert client.alarm_type == 2
     assert client.played == [(8195, True), (8195, False)]
+    assert client.alarm_calls
+    assert all(call["enabled"] is False for call in client.alarm_calls)
+
+
+def test_disable_detection_alarm_turns_alarm_off() -> None:
+    client = FakeTypedTapo("192.168.0.181", "admin", "cloud")
+    siren = TapoSiren(
+        "192.168.0.181",
+        "admin",
+        "cloud",
+        client_factory=lambda *args, **kwargs: client,
+    )
+    siren.disable_detection_alarm()
+    assert client.alarm_calls == [
+        {"enabled": False, "soundEnabled": True, "lightEnabled": False, "alarmType": None}
+    ]

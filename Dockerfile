@@ -15,10 +15,12 @@ ENV PYTHONUNBUFFERED=1 \
     YOLO_CONFIG_DIR=/app/.ultralytics
 
 COPY pyproject.toml README.md ./
+
+RUN pip install --no-cache-dir torch torchvision --index-url https://download.pytorch.org/whl/cpu
+
 COPY src ./src
 
-RUN pip install --no-cache-dir torch torchvision --index-url https://download.pytorch.org/whl/cpu \
-    && pip install --no-cache-dir . \
+RUN pip install --no-cache-dir . \
     && pip install --no-cache-dir --force-reinstall --no-deps opencv-python-headless==4.10.0.84 \
     && python -c "from ultralytics import YOLO; YOLO('yolo11n.pt')"
 

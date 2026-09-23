@@ -140,13 +140,7 @@ class TapoSiren:
             from pytapo import Tapo
 
             factory = Tapo
-        try:
-            client = factory(self.host, self.username, self.password)
-        except Exception as exc:  # noqa: BLE001
-            raise TapoAudioError(
-                f"Tapo login failed ({exc}). Use the Tapo app password as TAPO_CLOUD_PASSWORD "
-                "(not the ONVIF camera account), and enable Tapo Lab > Third-Party Compatibility."
-            ) from exc
+        client = self._connect(factory)
 
         try:
             setter = getattr(client, "setSpeakerVolume", None)
@@ -155,14 +149,47 @@ class TapoSiren:
         except Exception as exc:  # noqa: BLE001
             logger.debug("Tapo setSpeakerVolume skipped: %s", exc)
 
-        self._apply_sound_type(client)
+        try:
+            errors: list[str] = []
+            if self._play_manual_alarm(client, errors):
+                return
+            if self._play_usr_def_audio(client, errors):
+                return
+            raise TapoAudioError("Tapo speaker failed: " + "; ".join(errors))
+        finally:
+            # startManualAlarm / setAlarm(True) turn on Tapo "Detection Alarm",
+            # which then sirens and notifies the app on any motion. Always leave
+            # that off so we only play a one-shot clip when this monitor sees a cat.
+            self._disable_detection_alarm(client)
 
-        errors: list[str] = []
-        if self._play_manual_alarm(client, errors):
+    def disable_detection_alarm(self) -> None:
+        """Turn off Tapo Detection Alarm so motion does not keep sounding the siren."""
+        factory = self._client_factory
+        if factory is None:
+            from pytapo import Tapo
+
+            factory = Tapo
+        client = self._connect(factory)
+        self._disable_detection_alarm(client)
+
+    def _connect(self, factory: Callable[..., Any]) -> Any:
+        try:
+            return factory(self.host, self.username, self.password)
+        except Exception as exc:  # noqa: BLE001
+            raise TapoAudioError(
+                f"Tapo login failed ({exc}). Use the Tapo app password as TAPO_CLOUD_PASSWORD "
+                "(not the ONVIF camera account), and enable Tapo Lab > Third-Party Compatibility."
+            ) from exc
+
+    def _disable_detection_alarm(self, client: Any) -> None:
+        setter = getattr(client, "setAlarm", None)
+        if not callable(setter):
             return
-        if self._play_usr_def_audio(client, errors):
-            return
-        raise TapoAudioError("Tapo speaker failed: " + "; ".join(errors))
+        try:
+            setter(False, soundEnabled=True, lightEnabled=False)
+            logger.info("Tapo Detection Alarm is off (sound plays only when a cat is detected)")
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Could not turn off Tapo Detection Alarm: %s", exc)
 
     def _play_manual_alarm(self, client: Any, errors: list[str]) -> bool:
         starter = getattr(client, "startManualAlarm", None)
@@ -217,40 +244,6 @@ class TapoSiren:
         if clip is not None:
             return [clip]
         return self._audio_ids(client)
-
-    def _apply_sound_type(self, client: Any) -> None:
-        if not self.sound or custom_clip_id(self.sound) is not None:
-            return
-        names = self._type_names(client)
-        type_index = resolve_alarm_type(self.sound, names)
-        if type_index is None:
-            return
-        setter = getattr(client, "setAlarm", None)
-        if not callable(setter):
-            logger.debug("Tapo setAlarm missing; cannot select sound %s", self.sound)
-            return
-        try:
-            setter(
-                True,
-                soundEnabled=True,
-                lightEnabled=False,
-                alarmType=type_index,
-                alarmVolume="high",
-            )
-        except Exception as exc:  # noqa: BLE001
-            raise TapoAudioError(f"Tapo setAlarm sound {self.sound!r} failed: {exc}") from exc
-        label = names[type_index] if 0 <= type_index < len(names) else str(type_index)
-        logger.info("Selected Tapo alarm sound %s (type %s)", label, type_index)
-
-    def _type_names(self, client: Any) -> list[str]:
-        getter = getattr(client, "getAlertTypeList", None)
-        if not callable(getter):
-            return ["Siren", "Emergency", "Red Alert"]
-        try:
-            return alert_type_names(getter()) or ["Siren", "Emergency", "Red Alert"]
-        except Exception as exc:  # noqa: BLE001
-            logger.debug("Tapo getAlertTypeList skipped: %s", exc)
-            return ["Siren", "Emergency", "Red Alert"]
 
     def _audio_ids(self, client: Any) -> list[int]:
         getter = getattr(client, "getAlertConfig", None)

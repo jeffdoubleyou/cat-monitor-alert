@@ -52,6 +52,11 @@ class Settings(BaseSettings):
     tapo_alarm_sound: str = ""
 
     snapshot_dir: str = ""
+    frame_history_count: int = 60
+    detection_history_count: int = 50
+    ui_host: str = "0.0.0.0"
+    ui_port: int = 8787
+    ui_enabled: bool = True
     log_level: str = "INFO"
     dry_run: bool = False
 
@@ -75,6 +80,20 @@ class Settings(BaseSettings):
     def _positive(cls, value: float) -> float:
         if value <= 0:
             raise ValueError("duration settings must be greater than 0")
+        return value
+
+    @field_validator("frame_history_count", "detection_history_count")
+    @classmethod
+    def _non_negative(cls, value: int) -> int:
+        if value < 0:
+            raise ValueError("history counts must be 0 or greater")
+        return value
+
+    @field_validator("ui_port")
+    @classmethod
+    def _port(cls, value: int) -> int:
+        if not 0 <= value <= 65535:
+            raise ValueError("UI_PORT must be between 0 and 65535")
         return value
 
     @property

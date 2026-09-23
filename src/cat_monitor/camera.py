@@ -235,6 +235,20 @@ class OnvifCamera:
         )
         siren.play()
 
+    def quiet_tapo_motion_alarm(self) -> None:
+        """Turn off leftover Tapo Detection Alarm / app motion siren."""
+        if not self.tapo_password:
+            return
+        siren = TapoSiren(
+            self.host,
+            self.tapo_username,
+            self.tapo_password,
+            duration_seconds=self.tapo_alarm_seconds,
+            sound=self.tapo_alarm_sound,
+            client_factory=self._tapo_client_factory,
+        )
+        siren.disable_detection_alarm()
+
     def _play_cgi_audio(self) -> None:
         """Amcrest/Dahua HTTP CGI talk-back (G.711 A-law)."""
         import requests

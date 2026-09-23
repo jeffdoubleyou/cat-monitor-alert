@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from urllib.parse import quote, urlparse, urlunparse
 
 
@@ -27,3 +28,11 @@ def redact_url(uri: str) -> str:
     if parsed.port:
         host = f"{host}:{parsed.port}"
     return urlunparse(parsed._replace(netloc=f"***:***@{host}"))
+
+
+_CREDENTIALS_IN_TEXT = re.compile(r"(?i)(rtsp|https?)://[^/\s:@]+:[^/\s:@]+@")
+
+
+def redact_text(text: str) -> str:
+    """Redact embedded ``user:password@`` credentials in log text."""
+    return _CREDENTIALS_IN_TEXT.sub(r"\1://***:***@", text)

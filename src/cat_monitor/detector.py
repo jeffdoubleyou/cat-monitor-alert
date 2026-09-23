@@ -59,6 +59,10 @@ class CatDetector:
             self._model = YOLO(self.model_path)
         return self._model
 
+    def ensure_loaded(self) -> None:
+        """Load the YOLO weights so the first camera tick is not a surprise pause."""
+        self._load()
+
     def detect(self, frame: np.ndarray) -> DetectionResult:
         model = self._load()
         result = model.predict(

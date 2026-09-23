@@ -57,6 +57,8 @@ python -m cat_monitor --notify-test
 
 `--dry-run` still runs detection but skips the camera speaker and ntfy.
 
+While the monitor is running, open the snapshot gallery at `http://<host>:8787` (bind address/port from `UI_HOST` / `UI_PORT`). **Recent frames** is the rolling camera history; **Cat detections** is only the annotated hits.
+
 ### Tests
 
 ```bash
@@ -87,9 +89,14 @@ These cover config, ONVIF URL/audio handling, YOLO filtering, ntfy payloads, and
 | `ONVIF_AUDIO_CLIP_TOKEN` | empty | Play this clip; otherwise the first clip the camera reports |
 | `TAPO_CLOUD_PASSWORD` | empty | Tapo app password for C100-style siren (not the ONVIF account) |
 | `TAPO_ALARM_SECONDS` | `3` | How long to sound the Tapo alarm |
-| `TAPO_ALARM_SOUND` | empty | Tapo sound: `siren`, `emergency`, `red_alert`, or a custom clip id |
+| `TAPO_ALARM_SOUND` | empty | Optional Tapo custom clip id for the one-shot speaker sound |
 | `AUDIO_BACKCHANNEL_URL` | empty | Optional RTSP talk-back URL if ONVIF clips, Tapo alarm, and CGI all fail |
-| `SNAPSHOT_DIR` | empty | Write annotated JPEGs here |
+| `SNAPSHOT_DIR` | empty | Root for saved JPEGs (`frames/` and `detections/`) |
+| `FRAME_HISTORY_COUNT` | `60` | How many recent captured frames to keep |
+| `DETECTION_HISTORY_COUNT` | `50` | How many cat-detection JPEGs to keep |
+| `UI_ENABLED` | `true` | Serve the snapshot gallery |
+| `UI_HOST` | `0.0.0.0` | Address the gallery binds to |
+| `UI_PORT` | `8787` | Gallery port (`0` lets the OS pick a free port) |
 | `DRY_RUN` | `false` | Detect only |
 | `LOG_LEVEL` | `INFO` | Python log level |
 
@@ -97,7 +104,7 @@ These cover config, ONVIF URL/audio handling, YOLO filtering, ntfy payloads, and
 
 Most ONVIF Profile T cameras expose `PlayAudioClip`. Enable the speaker in the camera UI and, if the firmware has named clips (siren, doorbell, alert), set `ONVIF_AUDIO_CLIP_TOKEN` to that token.
 
-**Tapo C100 and other Tapo cameras** only implement ONVIF Profile S, so they have no ONVIF/RTSP speaker. Set `TAPO_CLOUD_PASSWORD` to your Tapo app password (this is **not** the ONVIF camera account). In the Tapo app, also turn on **Me → Tapo Lab → Third-Party Compatibility**. The monitor then plays the camera alarm for `TAPO_ALARM_SECONDS` (default 3). Pick the clip with `TAPO_ALARM_SOUND=siren`, `emergency`, or `red_alert`. You can also record up to two custom clips in the Tapo app and set `TAPO_ALARM_SOUND` to that clip id. Test with:
+**Tapo C100 and other Tapo cameras** only implement ONVIF Profile S, so they have no ONVIF/RTSP speaker. Set `TAPO_CLOUD_PASSWORD` to your Tapo app password (this is **not** the ONVIF camera account). In the Tapo app, also turn on **Me → Tapo Lab → Third-Party Compatibility**. The monitor plays a one-shot speaker clip for `TAPO_ALARM_SECONDS` (default 3). It does **not** enable Tapo Detection Alarm / motion siren, so the camera will not keep sounding or notifying the app on every motion. You can record a custom clip in the Tapo app and set `TAPO_ALARM_SOUND` to that clip id. Test with:
 
 ```bash
 python -m cat_monitor --play-sound
@@ -117,6 +124,6 @@ cp .env.example .env
 docker compose up --build
 ```
 
-The compose file uses `network_mode: host` so the container can reach LAN cameras the same way the host can. That is the right default on Linux. On Docker Desktop (macOS/Windows), comment out `network_mode: host` and keep the camera IP reachable from the VM.
+The compose file uses `network_mode: host` so the container can reach LAN cameras the same way the host can. That is the right default on Linux. The gallery then listens on `0.0.0.0:8787` on the host (override with `UI_PORT`). On Docker Desktop (macOS/Windows), comment out `network_mode: host` and keep the camera IP reachable from the VM.
 
 The image installs CPU PyTorch, `ffmpeg`, and downloads `yolo11n.pt` at build time so the first run is not blocked on a model download.

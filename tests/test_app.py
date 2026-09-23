@@ -22,6 +22,9 @@ class FakeDetector:
     def detect(self, frame):
         return self.result
 
+    def ensure_loaded(self):
+        return None
+
     def annotate(self, frame, result):
         return frame
 
@@ -152,3 +155,22 @@ def test_tick_sends_ntfy_before_sound() -> None:
     with patch("cat_monitor.app.encode_jpeg", return_value=b"jpeg"):
         assert monitor.tick() is True
     assert order == ["ntfy", "sound"]
+
+
+def test_tick_saves_frame_history(tmp_path: Path) -> None:
+    import numpy as np
+
+    from cat_monitor.store import SnapshotStore
+
+    class ArrayGrabber:
+        def grab(self, url: str):
+            return np.zeros((8, 10, 3), dtype=np.uint8)
+
+    result = DetectionResult()
+    monitor, camera, ntfy, _grabber = _monitor(result, _settings(snapshot_dir=str(tmp_path)))
+    monitor.grabber = ArrayGrabber()  # type: ignore[assignment]
+    monitor.store = SnapshotStore(tmp_path, frame_limit=5, detection_limit=5)
+    assert monitor.tick() is False
+    assert camera.sounds == 0
+    assert ntfy.alerts == []
+    assert len(monitor.store.list_frames()) == 1

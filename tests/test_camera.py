@@ -171,3 +171,24 @@ def test_play_sound_uses_tapo_alarm() -> None:
     assert client.stopped is True
     assert client.volume == 100
 
+
+def test_quiet_tapo_motion_alarm_disables_detection_alarm() -> None:
+    class FakeTapo:
+        def __init__(self, *args, **kwargs) -> None:
+            self.alarm_enabled = True
+
+        def setAlarm(self, enabled, soundEnabled=True, lightEnabled=True, alarmType=None, alarmVolume=None):
+            self.alarm_enabled = enabled
+
+    client = FakeTapo()
+    camera = OnvifCamera(
+        "192.168.0.181",
+        2020,
+        "admin1",
+        "onvif-secret",
+        tapo_password="cloud-secret",
+        tapo_client_factory=lambda *args, **kwargs: client,
+    )
+    camera.quiet_tapo_motion_alarm()
+    assert client.alarm_enabled is False
+

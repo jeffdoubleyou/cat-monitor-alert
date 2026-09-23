@@ -8,6 +8,6 @@ services:
         required: false
     volumes:
       - ./snapshots:/app/snapshots
-    # Host networking makes LAN ONVIF/RTSP cameras easiest to reach on Linux.
-    # Comment this out and use a bridge network if you prefer.
+    # Host networking makes LAN cameras reachable and binds the UI on the host
+    # (UI_HOST=0.0.0.0, UI_PORT=8787 by default).
     network_mode: host

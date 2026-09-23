@@ -1,4 +1,4 @@
-from cat_monitor.urls import inject_credentials, redact_url
+from cat_monitor.urls import inject_credentials, redact_text, redact_url
 
 
 def test_injects_credentials_when_missing() -> None:
@@ -16,3 +16,9 @@ def test_redacts_userinfo() -> None:
         redact_url("rtsp://admin:secret@10.0.0.8:554/path")
         == "rtsp://***:***@10.0.0.8:554/path"
     )
+
+
+def test_redacts_credentials_in_log_text() -> None:
+    text = "ffmpeg failed rtsp://admin:secret@10.0.0.8/stream: Connection refused"
+    assert "secret" not in redact_text(text)
+    assert "rtsp://***:***@10.0.0.8/stream" in redact_text(text)
